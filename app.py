@@ -82,7 +82,79 @@ button:disabled { opacity: .5; }
 .secondary { background: #555; }
 .danger { background: #a12b2b; }
 .memory { padding: 10px 0; border-bottom: 1px solid #eee; }
-.small { color: #666; font-size: 12px; }
+.small { color: #666; font-size: 14px; }
+
+select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: white;
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #2459d3;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.memory-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.memory-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.memory-editor textarea {
+  min-height: 90px;
+}
+
+@media (max-width: 600px) {
+  body {
+    margin: 12px auto;
+    padding: 0 12px;
+  }
+
+  .panel, #chat {
+    padding: 12px;
+  }
+
+  #chat {
+    max-height: 40vh;
+  }
+
+  #form {
+    flex-direction: column;
+  }
+
+  #rememberForm {
+    flex-direction: column;
+  }
+
+  #form > *, #rememberForm > * {
+    width: 100%;
+  }
+
+  .memory-controls button,
+  .memory-editor button {
+    flex: 1;
+  }
+}
 </style>
 </head>
 <body>
@@ -319,15 +391,7 @@ async function loadMemories() {
       row.append(fact, controls);
       container.appendChild(row);
     }
-        });
-        const payload = await result.json();
-        document.getElementById("memoryStatus").textContent =
-          result.ok ? "Memory deleted." : (payload.detail || "Delete failed");
-        await loadMemories();
-      });
-      row.append(fact, remove);
-      container.appendChild(row);
-    }
+        
   } catch (error) {
     container.textContent = "Error: " + error.message;
   }
@@ -348,20 +412,7 @@ document.getElementById("rememberForm").addEventListener("submit", async (event)
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({fact, category})
   });
-
-  const data = await response.json();
-
-  document.getElementById("memoryStatus").textContent =
-    response.ok
-      ? "Saved as memory #" + data.id + " (" + category + ")"
-      : (data.detail || "Save failed");
-
-  if (response.ok) {
-    field.value = "";
-    categoryField.value = "general";
-    await loadMemories();
-  }
-});
+  
   const data = await response.json();
   document.getElementById("memoryStatus").textContent =
     response.ok ? "Saved as memory #" + data.id : (data.detail || "Save failed");
