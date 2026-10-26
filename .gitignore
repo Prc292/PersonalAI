@@ -3,3 +3,6 @@
 __pycache__/
 *.pyc
 memory.db
+app_backup.py
+app_before_*.py
+backup_*/
