@@ -36,6 +36,12 @@ class ChatRequest(BaseModel):
 
 class RememberRequest(BaseModel):
     fact: str
+    category: str = "general"
+
+class EditMemoryRequest(BaseModel):
+    memory_id: int
+    fact: str
+    category: str
 
 class ForgetRequest(BaseModel):
     memory_id: int
@@ -97,9 +103,21 @@ button:disabled { opacity: .5; }
   <h2>Saved memory</h2>
   <p class="small">Only save facts you explicitly choose. These are stored locally on this Mac.</p>
   <form id="rememberForm">
-    <input id="fact" placeholder="A fact to remember..." maxlength="1000" required>
-    <button type="submit">Remember</button>
-  </form>
+  <input
+    id="fact"
+    placeholder="A fact to remember..."
+    maxlength="1000"
+    required
+  >
+  <select id="category" aria-label="Memory category">
+    <option value="general">General</option>
+    <option value="preferences">Preferences</option>
+    <option value="personal">Personal</option>
+    <option value="projects">Projects</option>
+    <option value="people">People</option>
+  </select>
+  <button type="submit">Remember</button>
+</form>
   <p id="memoryStatus" role="status"></p>
   <button id="refresh" class="secondary" type="button">Refresh memories</button>
   <div id="memories"></div>
@@ -170,20 +188,137 @@ async function loadMemories() {
       container.textContent = "No saved memories yet.";
       return;
     }
+    
     for (const item of data.memories) {
       const row = document.createElement("div");
       row.className = "memory";
-      const fact = document.createElement("span");
-      fact.textContent = "#" + item.id + " — " + item.fact + " ";
+
+      const fact = document.createElement("div");
+      fact.textContent = "#" + item.id + " [" + item.category + "] — " + item.fact;
+
+      const controls = document.createElement("div");
+      controls.className = "memory-controls";
+
+      const edit = document.createElement("button");
+      edit.textContent = "Edit";
+      edit.className = "secondary";
+
       const remove = document.createElement("button");
       remove.className = "danger";
       remove.textContent = "Forget";
+
+      edit.addEventListener("click", () => {
+        const existing = row.querySelector(".memory-editor");
+
+        if (existing) {
+          existing.remove();
+          edit.textContent = "Edit";
+          return;
+        }
+
+        const editor = document.createElement("form");
+        editor.className = "memory-editor";
+
+        const factInput = document.createElement("textarea");
+        factInput.value = item.fact;
+        factInput.maxLength = 1000;
+        factInput.required = true;
+        factInput.setAttribute("aria-label", "Edit memory");
+
+        const categorySelect = document.createElement("select");
+        categorySelect.setAttribute("aria-label", "Memory category");
+
+        for (const category of [
+          "general", "preferences", "personal", "projects", "people"
+        ]) {
+          const option = document.createElement("option");
+          option.value = category;
+          option.textContent =
+            category.charAt(0).toUpperCase() + category.slice(1);
+          categorySelect.appendChild(option);
+        }
+
+        categorySelect.value = item.category;
+
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.textContent = "Save changes";
+
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => {
+          editor.remove();
+          edit.textContent = "Edit";
+        });
+
+        editor.append(factInput, categorySelect, save, cancel);
+
+        editor.addEventListener("submit", async (event) => {
+          event.preventDefault();
+
+          const updatedFact = factInput.value.trim();
+          if (!updatedFact) {
+            factInput.focus();
+            return;
+          }
+
+          save.disabled = true;
+
+          try {
+            const response = await fetch("/edit-memory", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                memory_id: item.id,
+                fact: updatedFact,
+                category: categorySelect.value
+              })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+              throw new Error(result.detail || "Update failed");
+            }
+
+            document.getElementById("memoryStatus").textContent =
+              "Memory #" + item.id + " updated.";
+            await loadMemories();
+          } catch (error) {
+            document.getElementById("memoryStatus").textContent =
+              "Could not update memory: " + error.message;
+            save.disabled = false;
+          }
+        });
+
+        row.appendChild(editor);
+        edit.textContent = "Close editor";
+        factInput.focus();
+      });
+
       remove.addEventListener("click", async () => {
         if (!confirm("Delete memory #" + item.id + "?")) return;
+
         const result = await fetch("/forget", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({memory_id: item.id})
+        });
+
+        const payload = await result.json();
+
+        document.getElementById("memoryStatus").textContent =
+          result.ok ? "Memory deleted." : (payload.detail || "Delete failed");
+
+        await loadMemories();
+      });
+
+      controls.append(edit, remove);
+      row.append(fact, controls);
+      container.appendChild(row);
+    }
         });
         const payload = await result.json();
         document.getElementById("memoryStatus").textContent =
@@ -200,14 +335,33 @@ async function loadMemories() {
 
 document.getElementById("rememberForm").addEventListener("submit", async (event) => {
   event.preventDefault();
+
   const field = document.getElementById("fact");
+  const categoryField = document.getElementById("category");
   const fact = field.value.trim();
+  const category = categoryField.value;
+
   if (!fact) return;
+
   const response = await fetch("/remember", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({fact})
+    body: JSON.stringify({fact, category})
   });
+
+  const data = await response.json();
+
+  document.getElementById("memoryStatus").textContent =
+    response.ok
+      ? "Saved as memory #" + data.id + " (" + category + ")"
+      : (data.detail || "Save failed");
+
+  if (response.ok) {
+    field.value = "";
+    categoryField.value = "general";
+    await loadMemories();
+  }
+});
   const data = await response.json();
   document.getElementById("memoryStatus").textContent =
     response.ok ? "Saved as memory #" + data.id : (data.detail || "Save failed");
@@ -235,10 +389,32 @@ def get_memories():
 @app.post("/remember")
 def remember(request: RememberRequest):
     try:
-        memory_id = memory.add_memory(request.fact)
+        memory_id = memory.add_memory(
+            request.fact,
+            request.category,
+        )
         return {"id": memory_id, "saved": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/edit-memory")
+def edit_memory(request: EditMemoryRequest):
+    try:
+        updated = memory.update_memory(
+            request.memory_id,
+            request.fact,
+            request.category,
+        )
+        if not updated:
+            raise HTTPException(
+                status_code=404,
+                detail="Memory not found",
+            )
+        return {"updated": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 
 @app.post("/forget")
 def forget(request: ForgetRequest):
