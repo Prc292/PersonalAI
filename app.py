@@ -169,7 +169,9 @@ button {
   </select>
   <textarea id="message" placeholder="Talk to your assistant..." required></textarea>
   <button id="send" type="submit">Send</button>
-</form>
+  <button id="voiceToggle" type="button">🔊 Voice: Off</button>
+  <button id="micButton" type="button">🎤 Speak</button>
+  </form>
 
 <section class="panel">
   <h2>Saved memory</h2>
@@ -202,6 +204,73 @@ const form = document.getElementById("form");
 const input = document.getElementById("message");
 const chat = document.getElementById("chat");
 const send = document.getElementById("send");
+const voiceToggle = document.getElementById("voiceToggle");
+let voiceEnabled = true;
+window.addEventListener("load", () => {
+  voiceToggle.textContent = "🔊 Voice: On";
+});
+voiceToggle.textContent = "🔊 Voice: On";
+const micButton = document.getElementById("micButton");
+
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SpeechRecognition) {
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  micButton.addEventListener("click", () => {
+    recognition.start();
+    micButton.textContent = "🎙️ Listening...";
+  });
+
+  recognition.onresult = (event) => {
+    input.value = event.results[0][0].transcript;
+    micButton.textContent = "🎤 Speak";
+    input.focus();
+  };
+
+  recognition.onerror = () => {
+    micButton.textContent = "🎤 Speak";
+  };
+
+  recognition.onend = () => {
+    micButton.textContent = "🎤 Speak";
+  };
+} else {
+  micButton.addEventListener("click", () => {
+    alert("Speech recognition isn't supported in this browser. Try Safari or Chrome.");
+  });
+}
+
+voiceToggle.addEventListener("click", () => {
+  voiceEnabled = !voiceEnabled;
+  voiceToggle.textContent = voiceEnabled ? "🔊 Voice: On" : "🔊 Voice: Off";
+
+  if (voiceEnabled) {
+    const unlock = new SpeechSynthesisUtterance(" ");
+    unlock.volume = 0;
+    speechSynthesis.speak(unlock);
+  } else {
+    speechSynthesis.cancel();
+  }
+});
+
+
+function speakReply(text) {
+  if (!voiceEnabled || !("speechSynthesis" in window)) return;
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-US";
+  utterance.rate = 1;
+  utterance.pitch = 1;
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
+
 const histories = {local: [], cloud: []};
 
 function addMessage(who, text) {
@@ -238,6 +307,7 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(data.detail || "Request failed");
     history.push({role: "assistant", content: data.reply});
     addMessage("Assistant", data.reply);
+    speakReply(data.reply);
     document.getElementById("status").textContent =
       "Connected to local Gemma via LM Studio";
   } catch (error) {
