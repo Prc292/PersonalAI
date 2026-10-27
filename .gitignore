@@ -3,6 +3,17 @@
 __pycache__/
 *.pyc
 memory.db
+/knowledge/
 app_backup.py
 app_before_*.py
 backup_*/
+
+# Local environments and macOS files
+.venv-kokoro/
+.DS_Store
+
+# Editor settings
+.vscode/
+
+# Temporary pre-change copies
+*.before-tools

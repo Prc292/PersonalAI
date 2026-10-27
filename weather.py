@@ -1,12 +1,19 @@
 
+import os
+
 import httpx
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 
-def get_weather(city: str) -> dict:
-    """Get current conditions and today's forecast for a city."""
+def get_weather(city: str | None = None) -> dict:
+    """Get current weather, using the configured home city when none is given."""
+    city = (city or os.getenv("PERSONALAI_HOME_CITY", "")).strip()
+    if not city:
+        return {
+            "error": "No weather location was specified and PERSONALAI_HOME_CITY is not configured."
+        }
 
     with httpx.Client(timeout=10.0) as client:
         location_response = client.get(
