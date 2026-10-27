@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from openai import OpenAI
 import uvicorn
 import memory
+import weather
+import tools_engine
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -246,7 +248,13 @@ if (SpeechRecognition) {
 }
 
 voiceToggle.addEventListener("click", () => {
-  voiceEnabled = !voiceEnabled;
+  if (voiceEnabled) {
+  const unlock = new SpeechSynthesisUtterance(" ");
+  unlock.volume = 0;
+  speechSynthesis.speak(unlock);
+  return;
+}
+voiceEnabled = !voiceEnabled;
   voiceToggle.textContent = voiceEnabled ? "🔊 Voice: On" : "🔊 Voice: Off";
 
   if (voiceEnabled) {
@@ -262,10 +270,15 @@ voiceToggle.addEventListener("click", () => {
 function speakReply(text) {
   if (!voiceEnabled || !("speechSynthesis" in window)) return;
 
+  console.log(
+  speechSynthesis.getVoices().map(v => `${v.name} (${v.lang})`)
+);
+
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-US";
+  utterance.lang = "en-GB";
   utterance.rate = 1;
-  utterance.pitch = 1;
+  utterance.pitch = 1.1;
+  
 
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
@@ -543,10 +556,22 @@ def forget(request: ForgetRequest):
         raise HTTPException(status_code=404, detail="Memory not found")
     return {"deleted": True}
 
+
 @app.post("/chat")
 def chat_endpoint(payload: ChatRequest):
     if payload.mode not in ("local", "cloud"):
         raise HTTPException(status_code=400, detail="Invalid model mode.")
+
+    latest_user_message = next(
+        (
+            item.get("content", "")
+            for item in reversed(payload.messages)
+            if item.get("role") == "user"
+            and isinstance(item.get("content"), str)
+        ),
+        "",
+    )
+    
     if len(payload.messages) > 40:
         raise HTTPException(status_code=400, detail="Please start a fresh chat.")
 
@@ -616,19 +641,20 @@ provided. Do not claim to know facts absent from this conversation.
             safe_messages.append({"role": role, "content": content[:8000]})
 
     try:
-        result = request_client.chat.completions.create(
-            model=model_name,
+        reply = tools_engine.chat_with_tools(
+            request_client=request_client,
+            model_name=model_name,
             messages=safe_messages,
             temperature=0.7,
             max_tokens=700,
         )
-        reply = result.choices[0].message.content
-        return {"reply": reply or "(The model returned an empty response.)"}
+        return {"reply": reply}
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail=f"Model request failed: {type(exc).__name__}: {exc}",
         )
+ 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
